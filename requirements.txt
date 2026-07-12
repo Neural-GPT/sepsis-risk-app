@@ -5,3 +5,4 @@ scikit-learn==1.6.1
 xgboost==3.3.0
 joblib==1.5.3
 plotly==5.24.1
+requests==2.32.4

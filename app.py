@@ -5,6 +5,7 @@ import streamlit as st
 import plotly.graph_objects as go
 
 import model_utils as mu
+import llm_utils as llm
 
 st.set_page_config(page_title="Sepsis Risk Demo", page_icon="🩺", layout="centered")
 
@@ -14,13 +15,6 @@ st.set_page_config(page_title="Sepsis Risk Demo", page_icon="🩺", layout="cent
 # ---------------------------------------------------------------------------
 MODEL_DIR = os.environ.get("SEPSIS_MODEL_DIR", os.path.dirname(__file__))
 DIST_PATH = os.environ.get("SEPSIS_DIST_PATH", os.path.join(os.path.dirname(__file__), "feature_distributions.json"))
-
-
-@st.cache_resource
-def load_artifacts():
-    bundle = mu.load_bundle(MODEL_DIR)
-    distributions = mu.load_distributions(DIST_PATH)
-    return bundle, distributions
 
 
 @st.cache_resource
@@ -41,9 +35,9 @@ try:
 except FileNotFoundError as e:
     st.error(str(e))
     st.info(
-    "Place `xgb_model.json` and `sepsis_meta.joblib` "
-    "(both produced by the training notebook) in this app's directory, then reload."
-        )
+        "Place `xgb_model.json` and `sepsis_meta.joblib` "
+        "(both produced by the training notebook) in this app's directory, then reload."
+    )
     st.stop()
 
 
@@ -117,14 +111,37 @@ n_samples = st.slider("Number of background draws to average over", 5, 100, 30, 
 predict_clicked = st.button("🔬 Estimate Sepsis Risk", type="primary", width="stretch")
 
 if predict_clicked:
+    # New prediction -> clear any previous AI chat so it doesn't carry stale context
+    st.session_state.pop("chat_messages", None)
+
     feature_values = mu.user_inputs_to_feature_values(ui_values)
-    with st.spinner(f"Running {n_samples} random-background predictions..."):
+    with st.spinner(f"Running {n_samples} background predictions..."):
         probs = mu.predict_risk_distribution(
             bundle, feature_values, feature_cols, distributions,
             n_samples=n_samples, base_seed=None
         )
     mean_prob = float(probs.mean())
     band, color = mu.risk_band(mean_prob)
+
+    # Stash the latest result in session_state so the AI button/chat (which
+    # runs on reruns triggered by chat_input) can still see it afterward.
+    st.session_state["last_result"] = {
+        "mean_prob": mean_prob,
+        "band": band,
+        "color": color,
+        "probs": probs,
+        "n_samples": n_samples,
+        "curated_labels": {mu.CURATED_INPUTS[k]["label"]: v for k, v in ui_values.items()},
+    }
+
+if "last_result" in st.session_state:
+    result = st.session_state["last_result"]
+    mean_prob = result["mean_prob"]
+    band = result["band"]
+    color = result["color"]
+    probs = result["probs"]
+    n_samples = result["n_samples"]
+    curated_labels = result["curated_labels"]
 
     st.subheader("Result")
     r1, r2, r3 = st.columns(3)
@@ -168,11 +185,49 @@ if predict_clicked:
             "didn't specify) are doing a lot of the work — a reminder that this demo fills in "
             "most of the model's inputs randomly rather than from a real patient chart."
         )
+
+    # -----------------------------------------------------------------
+    # AI explanation chat (Groq / gpt-oss-120b)
+    # -----------------------------------------------------------------
+    st.divider()
+    st.subheader("🧠 Ask AI to explain this result")
+
+    if "chat_messages" not in st.session_state:
+        if st.button("Explain this result using AI"):
+            st.session_state["chat_messages"] = [
+                {"role": "system", "content": llm.SYSTEM_PROMPT},
+                {"role": "user", "content": llm.build_initial_prompt(mean_prob, band, curated_labels)},
+            ]
+            with st.spinner("Asking the AI..."):
+                try:
+                    reply = llm.call_groq(st.session_state["chat_messages"])
+                    st.session_state["chat_messages"].append({"role": "assistant", "content": reply})
+                except Exception as e:
+                    st.error(f"Couldn't reach the AI explainer: {e}")
+                    st.session_state.pop("chat_messages", None)
+            st.rerun()
+
+    if "chat_messages" in st.session_state:
+        for msg in st.session_state["chat_messages"][1:]:  # skip system prompt
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+
+        follow_up = st.chat_input("Ask a follow-up question...")
+        if follow_up:
+            st.session_state["chat_messages"].append({"role": "user", "content": follow_up})
+            with st.spinner("Thinking..."):
+                try:
+                    reply = llm.call_groq(st.session_state["chat_messages"])
+                    st.session_state["chat_messages"].append({"role": "assistant", "content": reply})
+                except Exception as e:
+                    st.error(f"Couldn't reach the AI explainer: {e}")
+            st.rerun()
+
 else:
     st.info("Set the values above and click **Estimate Sepsis Risk**.")
 
 st.divider()
 st.caption(
     "Built on a pipeline trained per the PhysioNet/CinC 2019 Challenge dataset. "
-    "For research/educational purposes only — not validated for clinical decision-making."
+    "For research/educational purposes only: not validated for clinical decision-making."
 )

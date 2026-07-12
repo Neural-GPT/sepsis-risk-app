@@ -33,3 +33,5 @@ desktop.ini
 build/
 dist/
 *.egg-info/
+
+llm_config.py
