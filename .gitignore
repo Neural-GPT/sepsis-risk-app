@@ -1,0 +1,35 @@
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Streamlit local config (can contain machine-specific settings)
+.streamlit/
+
+# Environment variables / secrets
+.env
+*.env
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+
+# Jupyter checkpoints (if you ever open notebooks locally)
+.ipynb_checkpoints/
+
+# Distribution / build artifacts
+build/
+dist/
+*.egg-info/
