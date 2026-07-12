@@ -3,7 +3,8 @@ Groq-backed LLM explainer for the sepsis risk demo.
 Uses gpt-oss-120b via Groq's OpenAI-compatible chat completions endpoint.
 """
 import requests
-from llm_config import GROQ_API_KEY
+import os
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 GROQ_MODEL = "openai/gpt-oss-120b"
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
