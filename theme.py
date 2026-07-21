@@ -50,6 +50,7 @@ section[data-testid="stSidebar"] > div {{ width: 250px !important; padding-top: 
 #MainMenu {{visibility: hidden;}}
 footer {{visibility: hidden;}}
 header[data-testid="stHeader"] {{ background: transparent; }}
+[data-testid="stSidebarNav"] {{ display: none !important; }}
 
 /* ---- Glass containers (via st.container(key="glass-...")) ---- */
 div[class*="st-key-glass-"] {{
