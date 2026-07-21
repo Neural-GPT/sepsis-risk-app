@@ -12,7 +12,9 @@ __pycache__/
 # Streamlit local config (can contain machine-specific settings)
 .streamlit/
 
-# Environment variables / secrets
+# Local secrets - never commit these
+llm_config.py
+db_config.py
 .env
 *.env
 
@@ -26,12 +28,10 @@ desktop.ini
 .idea/
 *.swp
 
-# Jupyter checkpoints (if you ever open notebooks locally)
+# Jupyter checkpoints
 .ipynb_checkpoints/
 
 # Distribution / build artifacts
 build/
 dist/
 *.egg-info/
-
-llm_config.py

@@ -1,233 +1,101 @@
-import os
-import numpy as np
-import pandas as pd
 import streamlit as st
-import plotly.graph_objects as go
 
-import model_utils as mu
-import llm_utils as llm
+from theme import inject_theme, glass_card
+import auth_utils as auth
 
-st.set_page_config(page_title="Sepsis Risk Demo", page_icon="🩺", layout="centered")
-
-# ---------------------------------------------------------------------------
-# Paths — the two artifacts exported by the training notebook must sit next
-# to this file (or set these as env vars when deploying).
-# ---------------------------------------------------------------------------
-MODEL_DIR = os.environ.get("SEPSIS_MODEL_DIR", os.path.dirname(__file__))
-DIST_PATH = os.environ.get("SEPSIS_DIST_PATH", os.path.join(os.path.dirname(__file__), "feature_distributions.json"))
-
-
-@st.cache_resource
-def load_artifacts():
-    bundle = mu.load_bundle(MODEL_DIR)
-    distributions = mu.load_distributions(DIST_PATH)
-    return bundle, distributions
-
-
-st.title("🩺 Sepsis Risk Estimator")
-st.caption(
-    "Educational demo — an XGBoost pipeline trained on the PhysioNet 2019 "
-    "Sepsis Challenge dataset. **Not a medical device, not for clinical use.**"
+st.set_page_config(
+    page_title="Sepsis Risk Estimator",
+    page_icon=":material/monitor_heart:",
+    layout="wide",
+    initial_sidebar_state="collapsed",
 )
+inject_theme()
 
-try:
-    bundle, distributions = load_artifacts()
-except FileNotFoundError as e:
-    st.error(str(e))
-    st.info(
-        "Place `xgb_model.json` and `sepsis_meta.joblib` "
-        "(both produced by the training notebook) in this app's directory, then reload."
-    )
-    st.stop()
+if auth.is_logged_in():
+    st.switch_page("pages/1_Predict.py")
 
+# -----------------------------------------------------------------------
+# Hero
+# -----------------------------------------------------------------------
+hero_l, hero_r = st.columns([1.3, 1], gap="large")
 
-feature_cols = bundle["feature_cols"]
-model_name = bundle.get("model_name", "model")
-
-with st.expander("ℹ️ How this works", expanded=False):
+with hero_l:
     st.markdown(
-        f"""
-The underlying **{model_name}** pipeline expects **{len(feature_cols)} engineered features**
-(summary statistics over each patient's ICU stay: mean / std / min / max / most-recent-value /
-missing-rate for 34 vitals & labs, plus demographics).
-
-Filling in all {len(feature_cols)} by hand isn't practical for a quick demo, so:
-- The **{len(mu.CURATED_INPUTS)} fields below** are the ones a user would realistically know —
-  they set the *current / most recent reading* for each variable.
-- **Every other feature** (trends, variability, extremes, missingness patterns, and all labs
-  not shown below) is **randomly sampled from the real training data's distribution** for
-  each prediction.
-- Because most of the feature vector is randomized, a single prediction can vary run to run.
-  We draw **{{n_samples}} random backgrounds** and report the **average risk** with a range,
-  which is far more stable than any single draw.
-        """.replace("{n_samples}", "30")
+        f"<div style='margin-top:2.2rem;'>"
+        f"<span style='color:{'#4FD1FF'}; letter-spacing:3px; font-weight:600; font-size:0.8rem;'>"
+        f"MACHINE LEARNING &nbsp;&middot;&nbsp; CLINICAL RISK SCREENING</span></div>",
+        unsafe_allow_html=True,
     )
-
-st.subheader("Patient snapshot")
-
-col1, col2 = st.columns(2)
-ui_values = {}
-
-with col1:
-    ui_values["age"] = st.slider(mu.CURATED_INPUTS["age"]["label"],
-                                  mu.CURATED_INPUTS["age"]["min"], mu.CURATED_INPUTS["age"]["max"],
-                                  mu.CURATED_INPUTS["age"]["default"])
-    ui_values["gender"] = st.radio(mu.CURATED_INPUTS["gender"]["label"],
-                                    list(mu.CURATED_INPUTS["gender"]["options"].keys()), horizontal=True)
-    ui_values["icu_los"] = st.slider(mu.CURATED_INPUTS["icu_los"]["label"],
-                                      mu.CURATED_INPUTS["icu_los"]["min"], mu.CURATED_INPUTS["icu_los"]["max"],
-                                      mu.CURATED_INPUTS["icu_los"]["default"])
-    ui_values["hr"] = st.slider(mu.CURATED_INPUTS["hr"]["label"],
-                                 mu.CURATED_INPUTS["hr"]["min"], mu.CURATED_INPUTS["hr"]["max"],
-                                 mu.CURATED_INPUTS["hr"]["default"])
-    ui_values["temp"] = st.slider(mu.CURATED_INPUTS["temp"]["label"],
-                                   mu.CURATED_INPUTS["temp"]["min"], mu.CURATED_INPUTS["temp"]["max"],
-                                   mu.CURATED_INPUTS["temp"]["default"], step=mu.CURATED_INPUTS["temp"]["step"])
-    ui_values["resp"] = st.slider(mu.CURATED_INPUTS["resp"]["label"],
-                                   mu.CURATED_INPUTS["resp"]["min"], mu.CURATED_INPUTS["resp"]["max"],
-                                   mu.CURATED_INPUTS["resp"]["default"])
-
-with col2:
-    ui_values["o2sat"] = st.slider(mu.CURATED_INPUTS["o2sat"]["label"],
-                                    mu.CURATED_INPUTS["o2sat"]["min"], mu.CURATED_INPUTS["o2sat"]["max"],
-                                    mu.CURATED_INPUTS["o2sat"]["default"])
-    ui_values["sbp"] = st.slider(mu.CURATED_INPUTS["sbp"]["label"],
-                                  mu.CURATED_INPUTS["sbp"]["min"], mu.CURATED_INPUTS["sbp"]["max"],
-                                  mu.CURATED_INPUTS["sbp"]["default"])
-    ui_values["map"] = st.slider(mu.CURATED_INPUTS["map"]["label"],
-                                  mu.CURATED_INPUTS["map"]["min"], mu.CURATED_INPUTS["map"]["max"],
-                                  mu.CURATED_INPUTS["map"]["default"])
-    ui_values["wbc"] = st.slider(mu.CURATED_INPUTS["wbc"]["label"],
-                                  mu.CURATED_INPUTS["wbc"]["min"], mu.CURATED_INPUTS["wbc"]["max"],
-                                  mu.CURATED_INPUTS["wbc"]["default"], step=mu.CURATED_INPUTS["wbc"]["step"])
-    ui_values["lactate"] = st.slider(mu.CURATED_INPUTS["lactate"]["label"],
-                                      mu.CURATED_INPUTS["lactate"]["min"], mu.CURATED_INPUTS["lactate"]["max"],
-                                      mu.CURATED_INPUTS["lactate"]["default"], step=mu.CURATED_INPUTS["lactate"]["step"])
-
-st.divider()
-n_samples = st.slider("Number of background draws to average over", 5, 100, 30, step=5,
-                       help="More draws = more stable estimate, but slower.")
-
-predict_clicked = st.button("🔬 Estimate Sepsis Risk", type="primary", width="stretch")
-
-if predict_clicked:
-    # New prediction -> clear any previous AI chat so it doesn't carry stale context
-    st.session_state.pop("chat_messages", None)
-
-    feature_values = mu.user_inputs_to_feature_values(ui_values)
-    with st.spinner(f"Running {n_samples} background predictions..."):
-        probs = mu.predict_risk_distribution(
-            bundle, feature_values, feature_cols, distributions,
-            n_samples=n_samples, base_seed=None
-        )
-    mean_prob = float(probs.mean())
-    band, color = mu.risk_band(mean_prob)
-
-    # Stash the latest result in session_state so the AI button/chat (which
-    # runs on reruns triggered by chat_input) can still see it afterward.
-    st.session_state["last_result"] = {
-        "mean_prob": mean_prob,
-        "band": band,
-        "color": color,
-        "probs": probs,
-        "n_samples": n_samples,
-        "curated_labels": {mu.CURATED_INPUTS[k]["label"]: v for k, v in ui_values.items()},
-    }
-
-if "last_result" in st.session_state:
-    result = st.session_state["last_result"]
-    mean_prob = result["mean_prob"]
-    band = result["band"]
-    color = result["color"]
-    probs = result["probs"]
-    n_samples = result["n_samples"]
-    curated_labels = result["curated_labels"]
-
-    st.subheader("Result")
-    r1, r2, r3 = st.columns(3)
-    r1.metric("Average predicted risk", f"{mean_prob:.1%}")
-    r2.metric("Risk band", band)
-    r3.metric("Range across draws", f"{probs.min():.1%} – {probs.max():.1%}")
-
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=mean_prob * 100,
-        number={'suffix': "%"},
-        gauge={
-            'axis': {'range': [0, 100]},
-            'bar': {'color': color},
-            'steps': [
-                {'range': [0, 20], 'color': '#e8f5e9'},
-                {'range': [20, 50], 'color': '#fff8e1'},
-                {'range': [50, 100], 'color': '#ffebee'},
-            ],
-        },
-        title={'text': "Sepsis Risk"},
-    ))
-    fig.update_layout(height=300, margin=dict(l=20, r=20, t=50, b=20))
-    st.plotly_chart(fig, width="stretch")
-
     st.markdown(
-        f"**{band} risk** ({mean_prob:.1%} average across {n_samples} draws). "
-        "This reflects your entered values plus randomly sampled background features "
-        "consistent with the training population — treat it as illustrative, not diagnostic."
+        "<h1 style='font-size:3.1rem; line-height:1.1; margin-top:0.5rem;'>"
+        "Sepsis Risk<br>Estimator</h1>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<p style='color:#9AA2AE; font-size:1.1rem; max-width:34rem; margin-top:0.9rem;'>"
+        "An interactive, explainable machine learning demo for early sepsis risk "
+        "screening — trained on the PhysioNet 2019 Challenge dataset, with a choice "
+        "of XGBoost, Random Forest, or Logistic Regression, plus a built-in AI "
+        "explanation layer.</p>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<p style='color:#5C636E; font-size:0.82rem; margin-top:1.4rem;'>"
+        "Educational demo only — not a medical device, not for clinical use.</p>",
+        unsafe_allow_html=True,
     )
 
-    with st.expander("See distribution across all draws"):
-        hist_fig = go.Figure(go.Histogram(x=probs * 100, nbinsx=20, marker_color=color))
-        hist_fig.update_layout(
-            xaxis_title="Predicted risk (%)", yaxis_title="Count of draws",
-            height=280, margin=dict(l=20, r=20, t=20, b=20)
-        )
-        st.plotly_chart(hist_fig, width="stretch")
-        st.caption(
-            "Wide spread means the randomly-sampled background features (labs/trends you "
-            "didn't specify) are doing a lot of the work — a reminder that this demo fills in "
-            "most of the model's inputs randomly rather than from a real patient chart."
-        )
+with hero_r:
+    with glass_card("glass-auth"):
+        tab_login, tab_signup = st.tabs(["Log In", "Sign Up"])
 
-    # -----------------------------------------------------------------
-    # AI explanation chat (Groq / gpt-oss-120b)
-    # -----------------------------------------------------------------
-    st.divider()
-    st.subheader("🧠 Ask AI to explain this result")
+        with tab_login:
+            st.markdown("#### Welcome back")
+            login_email = st.text_input("Email", key="login_email")
+            login_password = st.text_input("Password", type="password", key="login_password")
+            if st.button("Log In", key="login_btn", width="stretch"):
+                success, msg = auth.login(login_email, login_password)
+                if success:
+                    st.success(msg)
+                    st.switch_page("pages/1_Predict.py")
+                else:
+                    st.error(msg)
 
-    if "chat_messages" not in st.session_state:
-        if st.button("Explain this result using AI"):
-            st.session_state["chat_messages"] = [
-                {"role": "system", "content": llm.SYSTEM_PROMPT},
-                {"role": "user", "content": llm.build_initial_prompt(mean_prob, band, curated_labels)},
-            ]
-            with st.spinner("Asking the AI..."):
-                try:
-                    reply = llm.call_groq(st.session_state["chat_messages"])
-                    st.session_state["chat_messages"].append({"role": "assistant", "content": reply})
-                except Exception as e:
-                    st.error(f"Couldn't reach the AI explainer: {e}")
-                    st.session_state.pop("chat_messages", None)
-            st.rerun()
+        with tab_signup:
+            st.markdown("#### Create an account")
+            signup_name = st.text_input("Full name", key="signup_name")
+            signup_email = st.text_input("Email", key="signup_email")
+            signup_password = st.text_input("Password", type="password", key="signup_password",
+                                             help="At least 8 characters.")
+            signup_confirm = st.text_input("Confirm password", type="password", key="signup_confirm")
+            if st.button("Create Account", key="signup_btn", width="stretch"):
+                success, msg = auth.signup(signup_email, signup_name, signup_password, signup_confirm)
+                if success:
+                    st.success(msg)
+                    st.switch_page("pages/1_Predict.py")
+                else:
+                    st.error(msg)
 
-    if "chat_messages" in st.session_state:
-        for msg in st.session_state["chat_messages"][1:]:  # skip system prompt
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
+st.write("")
+st.write("")
 
-        follow_up = st.chat_input("Ask a follow-up question...")
-        if follow_up:
-            st.session_state["chat_messages"].append({"role": "user", "content": follow_up})
-            with st.spinner("Thinking..."):
-                try:
-                    reply = llm.call_groq(st.session_state["chat_messages"])
-                    st.session_state["chat_messages"].append({"role": "assistant", "content": reply})
-                except Exception as e:
-                    st.error(f"Couldn't reach the AI explainer: {e}")
-            st.rerun()
-
-else:
-    st.info("Set the values above and click **Estimate Sepsis Risk**.")
-
-st.divider()
-st.caption(
-    "Built on a pipeline trained per the PhysioNet/CinC 2019 Challenge dataset. "
-    "For research/educational purposes only: not validated for clinical decision-making."
-)
+# -----------------------------------------------------------------------
+# Feature strip
+# -----------------------------------------------------------------------
+f1, f2, f3, f4 = st.columns(4, gap="medium")
+features = [
+    ("psychology", "Multiple Models", "Switch between XGBoost, Random Forest, and Logistic Regression."),
+    ("monitoring", "Rich Visualizations", "Risk gauges, distribution histograms, and model comparison charts."),
+    ("forum", "AI Explanations", "GPT-OSS-120B explains each result in plain English."),
+    ("database", "Prediction History", "Every prediction you run is saved to your account."),
+]
+for col, (icon, title, desc) in zip([f1, f2, f3, f4], features):
+    with col:
+        with glass_card(f"glass-feat-{icon}"):
+            st.markdown(
+                f'<div class="icon-badge" style="width:42px;height:42px;">'
+                f'<span class="material-symbols-outlined">{icon}</span></div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(f"**{title}**")
+            st.caption(desc)

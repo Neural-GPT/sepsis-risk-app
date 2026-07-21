@@ -2,9 +2,13 @@
 Groq-backed LLM explainer for the sepsis risk demo.
 Uses gpt-oss-120b via Groq's OpenAI-compatible chat completions endpoint.
 """
-import requests
 import os
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+import requests
+
+try:
+    from llm_config import GROQ_API_KEY
+except ImportError:
+    GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 GROQ_MODEL = "openai/gpt-oss-120b"
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -42,6 +46,11 @@ def build_initial_prompt(mean_prob, band, curated_values):
 
 
 def call_groq(messages, temperature=0.4, max_tokens=600):
+    if not GROQ_API_KEY:
+        raise RuntimeError(
+            "Groq API key not found. Set it in llm_config.py (local) or the "
+            "GROQ_API_KEY environment variable (deployed)."
+        )
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json",
