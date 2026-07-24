@@ -1,7 +1,9 @@
 # Sepsis Risk Estimator
-| `assets/screenshots/predict.png` | The Predict page with the model selector and patient input panel |
+![Landing page](assets/screenshots/landing.png) The landing page
 
 An interactive machine learning demo that estimates sepsis risk from a handful of patient vitals, built on the [PhysioNet/CinC 2019 Sepsis Challenge](https://physionet.org/content/challenge-2019/1.0.0/) dataset. Pick a model, enter what you know about a patient, and get a risk estimate with an LLM explanation of what it means.
+
+![Predict page](assets/screenshots/predict.png)
 
 **Live demo:** [sepsis-risk-demo.onrender.com](https://sepsis-risk-demo.onrender.com/)
 
@@ -21,25 +23,7 @@ On top of that:
 - **An AI explains the result** — GPT-OSS-120B (via Groq) turns the raw percentage into a plain-English explanation and takes follow-up questions.
 - **Hover explanations** — every input field has a small info icon explaining what it measures and why it's clinically relevant, so you're not just guessing what "MAP" means.
 
-## Screenshots
-
-Drop your screenshots into `assets/screenshots/` using the filenames below, and they'll show up here automatically.
-
-| File | What to capture |
-|---|---|
-| `assets/screenshots/landing.png` | The landing page, with the login/sign-up card visible |
-| `assets/screenshots/predict.png` | The Predict page with the model selector and patient input panel |
-| `assets/screenshots/result.png` | A completed prediction — the gauge, risk band, and AI explanation chat |
-| `assets/screenshots/history.png` | The History page with a few saved predictions and the risk-over-time chart |
-| `assets/screenshots/models.png` | The About & Models page showing the ROC/PR curves |
-
-```markdown
-![Landing page](assets/screenshots/landing.png)
-![Predict page](assets/screenshots/predict.png)
 ![Prediction result](assets/screenshots/result.png)
-![History page](assets/screenshots/history.png)
-![Model comparison](assets/screenshots/models.png)
-```
 
 ## Tech stack
 
@@ -49,6 +33,9 @@ Drop your screenshots into `assets/screenshots/` using the filenames below, and 
 - **Database:** MongoDB Atlas
 - **AI explanations:** Groq API (GPT-OSS-120B)
 - **Hosting:** Render
+
+![History page](assets/screenshots/history.png)
+
 
 ## Project structure
 
@@ -86,6 +73,9 @@ The model files and `.json` artifacts are produced by the training notebook — 
 ## Running it locally
 
 You'll need Python 3.13, a free [MongoDB Atlas](https://www.mongodb.com/cloud/atlas/register) cluster, and a [Groq API key](https://console.groq.com/). The app itself runs entirely on your machine, but MongoDB and Groq are cloud services, so you do need an internet connection for those two pieces — there's no way around that without swapping in a local database and a local LLM, which this project doesn't currently support.
+
+![Model comparison](assets/screenshots/models.png)
+
 
 **1. Clone the repo and set up a virtual environment**
 
