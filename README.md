@@ -1,6 +1,7 @@
 # Sepsis Risk Estimator
+| `assets/screenshots/predict.png` | The Predict page with the model selector and patient input panel |
 
-An interactive machine learning demo that estimates sepsis risk from a handful of patient vitals, built on the [PhysioNet/CinC 2019 Sepsis Challenge](https://physionet.org/content/challenge-2019/1.0.0/) dataset. Pick a model, enter what you know about a patient, and get a risk estimate with an AI-generated explanation of what it means.
+An interactive machine learning demo that estimates sepsis risk from a handful of patient vitals, built on the [PhysioNet/CinC 2019 Sepsis Challenge](https://physionet.org/content/challenge-2019/1.0.0/) dataset. Pick a model, enter what you know about a patient, and get a risk estimate with an LLM explanation of what it means.
 
 **Live demo:** [sepsis-risk-demo.onrender.com](https://sepsis-risk-demo.onrender.com/)
 
